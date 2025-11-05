@@ -3,262 +3,218 @@
 #include <string>
 using namespace std;
 
-// ====================== CLASS DEFINITION =========================
+const int MAX_PLAYLISTS = 50;
+const int MAX_ITEMS = 50;
 
-class Song {
-private:
-    string title;
-    string artist;
-    float duration; // in minutes
-
+class Media {
 public:
-    // --- Constructors ---
-    Song() {
-        title = "Unknown";
-        artist = "Unknown";
-        duration = 0.0;
-    }
+    virtual void display() const = 0;
+    virtual string toFileString() const = 0;
+    virtual Media* clone() const = 0;
+    virtual ~Media() {}
+};
 
-    Song(string t, string a, float d) {
-        title = t;
-        artist = a;
-        duration = d;
-    }
+class Song : public Media {
+    string title, artist;
+    float duration;
+public:
+    Song() : duration(0.0f) {}
+    Song(string t, string a, float d) { title = t; artist = a; duration = d; }
 
-    // --- Destructor ---
-    ~Song() {
-        // optional message for debugging
-        // cout << "Deleting song: " << title << endl;
-    }
-
-    // --- Member Functions ---
     void input() {
         cout << "Enter song title: ";
-        cin.ignore();
         getline(cin, title);
         cout << "Enter artist name: ";
         getline(cin, artist);
-        cout << "Enter duration (in minutes): ";
+        cout << "Enter duration (minutes): ";
         cin >> duration;
+        cin.ignore();
     }
 
-    void display() const {
-        cout << "Title: " << title << "\nArtist: " << artist
-             << "\nDuration: " << duration << " min\n";
+    void display() const override {
+        cout << " • " << title << " [" << artist << "] - " << duration << " min\n";
     }
 
-    string getTitle() const { return title; }
+    string toFileString() const override {
+        return "SONG," + title + "," + artist + "," + to_string(duration) + "\n";
+    }
 
-    // --- Friend function for saving song to file ---
-    friend void saveToFile(Song s);
+    Media* clone() const override { return new Song(*this); }
 };
 
-// =================================================================
-
-class Playlist {
-private:
-    Song *songs;
-    int count;
-    int capacity;
-
+class MediaCollection {
+protected:
+    string name;
+    Media* items[MAX_ITEMS];
+    int itemCount;
 public:
-    // --- Constructor ---
-    Playlist(int cap = 10) {
-        capacity = cap;
-        count = 0;
-        songs = new Song[capacity];
+    MediaCollection(string n = "Collection") : name(n), itemCount(0) {}
+
+    virtual void addItem(Media* m) {
+        if (itemCount < MAX_ITEMS) items[itemCount++] = m;
+        else cout << "Collection full!\n";
     }
 
-    // --- Destructor ---
-    ~Playlist() {
-        delete[] songs;
+    virtual void displayItems() const {
+        cout << "\n--- " << name << " ---\n";
+        if (itemCount == 0) cout << "(No media items)\n";
+        else for (int i = 0; i < itemCount; i++) items[i]->display();
     }
 
-    // --- Add Song (Overloaded Function) ---
-    void addSong(Song s) {
-        if (count < capacity) {
-            songs[count++] = s;
-            cout << "Song added successfully!\n";
+    void saveToFile() const {
+        ofstream f(name + ".txt");
+        for (int i = 0; i < itemCount; i++) f << items[i]->toFileString();
+        cout << "Saved to " << name << ".txt\n";
+    }
+
+    virtual ~MediaCollection() {
+        for (int i = 0; i < itemCount; i++) delete items[i];
+    }
+};
+
+class Playlist : public MediaCollection {
+public:
+    Playlist(string n = "Playlist") : MediaCollection(n) {}
+
+    void addSongInteractive() {
+        Song* s = new Song;
+        s->input();
+        addItem(s);
+    }
+
+    void removeLast() {
+        if (itemCount > 0) {
+            delete items[--itemCount];
+            cout << "Removed last song.\n";
         } else {
-            cout << "Playlist is full!\n";
+            throw "Playlist is empty!";
         }
     }
 
-    // Function Overloading Example
-    void addSong(string title, string artist, float duration) {
-        if (count < capacity) {
-            songs[count++] = Song(title, artist, duration);
-            cout << "Song added successfully using overloaded function!\n";
-        } else {
-            cout << "Playlist is full!\n";
-        }
+    Playlist operator+(const Playlist& other) {
+        Playlist merged("Merged Playlist");
+        for (int i = 0; i < itemCount; i++) merged.addItem(items[i]->clone());
+        for (int j = 0; j < other.itemCount; j++) merged.addItem(other.items[j]->clone());
+        return merged;
     }
 
-    // --- Display Songs ---
-    void showPlaylist() const {
-        if (count == 0) {
-            cout << "Playlist is empty.\n";
-            return;
-        }
-        cout << "\n----- Your Playlist -----\n";
-        for (int i = 0; i < count; i++) {
-            cout << "\nSong " << i + 1 << ":\n";
-            songs[i].display();
-        }
-    }
-
-    // --- Search song by title ---
-    void searchSong(string name) const {
-        for (int i = 0; i < count; i++) {
-            if (songs[i].getTitle() == name) {
-                cout << "\nSong found!\n";
-                songs[i].display();
-                return;
-            }
-        }
-        cout << "Song not found.\n";
-    }
-
-    // --- Save playlist to file ---
-    void savePlaylist() {
-        ofstream fout("playlist.txt", ios::app);
-        if (!fout) {
-            cout << "Error opening file!\n";
-            return;
-        }
-        for (int i = 0; i < count; i++) {
-            fout << "Title: " << songs[i].getTitle() << endl;
-        }
-        fout.close();
-        cout << "Playlist saved to file successfully.\n";
-    }
+    friend void comparePlaylists(const Playlist&, const Playlist&);
 };
 
-// =================================================================
-
-// Friend function definition
-void saveToFile(Song s) {
-    ofstream fout("songs.txt", ios::app);
-    if (fout) {
-        fout << s.getTitle() << endl;
-    }
-    fout.close();
+void comparePlaylists(const Playlist& a, const Playlist& b) {
+    cout << "\nComparison: " << a.name << " vs " << b.name << "\n";
+    if (a.itemCount > b.itemCount) cout << a.name << " has more songs.\n";
+    else if (a.itemCount < b.itemCount) cout << b.name << " has more songs.\n";
+    else cout << "Both have the same number of songs.\n";
 }
 
-// =================================================================
-
-// Base class for demonstrating Inheritance
-class MusicSystem {
-public:
-    virtual void info() {
-        cout << "\n--- Welcome to Music Playlist Manager ---\n";
-    }
-};
-
-// Derived class (Inheritance + Virtual Function)
-class Player : public MusicSystem {
-public:
-    void info() override { // Function Overriding Example
-        cout << "\n🎶 Music Player Ready! 🎶\n";
-    }
-};
-
-// =================================================================
-
-// Template Example
-template <class T>
-void showInfo(T msg) {
-    cout << msg << endl;
+template <typename T>
+void showDetails(const T& info) {
+    cout << "[DETAIL] " << info << endl;
 }
 
-// =================================================================
-
-// Exception Handling Example
-void divideDemo() {
-    int a, b;
-    cout << "\nEnter two numbers (for exception demo): ";
-    cin >> a >> b;
-    try {
-        if (b == 0)
-            throw b;
-        cout << "Result = " << (a / b) << endl;
-    } catch (int) {
-        cout << "Division by zero not allowed!\n";
-    }
+void printMenu() {
+    cout << "\n====== PLAYLIST MENU ======\n";
+    cout << "1) Create new playlist\n";
+    cout << "2) Add song to playlist\n";
+    cout << "3) Display playlist\n";
+    cout << "4) Compare two playlists\n";
+    cout << "5) Merge and display two playlists\n";
+    cout << "6) Remove last song from playlist\n";
+    cout << "7) Save playlist to file\n";
+    cout << "8) Exit\n";
+    cout << "Enter choice: ";
 }
-
-// =================================================================
-// ======================== MAIN FUNCTION ==========================
 
 int main() {
-    MusicSystem *sys = new Player();
-    sys->info(); // Dynamic Binding (virtual function)
-    delete sys;
-
-    Playlist playlist(5);
+    Playlist* playlists[MAX_PLAYLISTS];
+    int playlistCount = 0;
     int choice;
 
-    do {
-        cout << "\n=========== MUSIC PLAYLIST MANAGER ===========\n";
-        cout << "1. Add Song\n2. Add Song (Overloaded)\n3. Show Playlist\n4. Search Song\n5. Save Playlist to File\n6. Divide Demo (Exception Handling)\n0. Exit\n";
-        cout << "Enter your choice: ";
-        cin >> choice;
-
-        switch (choice) {
-        case 1: {
-            Song s;
-            s.input();
-            playlist.addSong(s);
-            saveToFile(s);
-            break;
-        }
-        case 2: {
-            string title, artist;
-            float duration;
+    try {
+        do {
+            printMenu();
+            cin >> choice;
             cin.ignore();
-            cout << "Enter title: ";
-            getline(cin, title);
-            cout << "Enter artist: ";
-            getline(cin, artist);
-            cout << "Enter duration: ";
-            cin >> duration;
-            playlist.addSong(title, artist, duration);
-            break;
-        }
-        case 3:
-            playlist.showPlaylist();
-            break;
 
-        case 4: {
-            cin.ignore();
-            string name;
-            cout << "Enter song title to search: ";
-            getline(cin, name);
-            playlist.searchSong(name);
-            break;
-        }
+            if (choice == 1 && playlistCount < MAX_PLAYLISTS) {
+                string name;
+                cout << "Enter playlist name: ";
+                getline(cin, name);
+                playlists[playlistCount++] = new Playlist(name);
+                cout << "Playlist \"" << name << "\" created.\n";
 
-        case 5:
-            playlist.savePlaylist();
-            break;
+            } else if (choice == 2) {
+                int index;
+                cout << "Enter playlist index (0-" << playlistCount - 1 << "): ";
+                cin >> index;
+                cin.ignore();
+                if (index >= 0 && index < playlistCount) 
+                    playlists[index]->addSongInteractive();
+                else cout << "Invalid index!\n";
 
-        case 6:
-            divideDemo();
-            break;
+            } else if (choice == 3) {
+                int index;
+                cout << "Enter playlist index (0-" << playlistCount - 1 << "): ";
+                cin >> index;
+                cin.ignore();
+                if (index >= 0 && index < playlistCount) 
+                    playlists[index]->displayItems();
+                else cout << "Invalid index!\n";
 
-        case 0:
-            cout << "Exiting Music Playlist Manager...\n";
-            break;
+            } else if (choice == 4) {
+                int a, b;
+                cout << "Enter index of playlist A: ";
+                cin >> a;
+                cout << "Enter index of playlist B: ";
+                cin >> b;
+                cin.ignore();
+                if (a >= 0 && b >= 0 && a < playlistCount && b < playlistCount) 
+                    comparePlaylists(*playlists[a], *playlists[b]);
+                else cout << "Invalid indexes!\n";
 
-        default:
-            cout << "Invalid choice!\n";
-        }
-    } while (choice != 0);
+            } else if (choice == 5) {
+                int a, b;
+                cout << "Merge playlist index A: ";
+                cin >> a;
+                cout << "with playlist index B: ";
+                cin >> b;
+                cin.ignore();
+                if (a >= 0 && b >= 0 && a < playlistCount && b < playlistCount) {
+                    Playlist merged = *playlists[a] + *playlists[b];
+                    merged.displayItems();
+                } else cout << "Invalid indexes!\n";
 
-    // Template Example
-    showInfo("\nThank you for using Music Playlist Manager!");
+            } else if (choice == 6) {
+                int index;
+                cout << "Enter playlist to remove song from (0-" << playlistCount - 1 << "): ";
+                cin >> index;
+                cin.ignore();
+                if (index >= 0 && index < playlistCount) 
+                    playlists[index]->removeLast();
+                else cout << "Invalid playlist index!\n";
 
+            } else if (choice == 7) {
+                int index;
+                cout << "Enter playlist index to save: ";
+                cin >> index;
+                cin.ignore();
+                if (index >= 0 && index < playlistCount) 
+                    playlists[index]->saveToFile();
+                else cout << "Invalid index!\n";
+
+            } else if (choice != 8) {
+                cout << "Invalid option!\n";
+            }
+
+        } while (choice != 8);
+    } 
+    catch (const char* errMsg) {
+        cout << "Error: " << errMsg << endl;
+    }
+
+    for (int i = 0; i < playlistCount; i++) delete playlists[i]; // cleanup
+
+    showDetails("Program complete. Thx for using Playlist Manager!");
     return 0;
 }
-
-.
